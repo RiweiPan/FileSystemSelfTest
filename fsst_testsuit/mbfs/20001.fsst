@@ -1,0 +1,12 @@
+description=This is for test.
+
+pre-begin
+open abc.txt
+close
+pre-end
+
+run-begin
+open abc.txt
+close
+run-end
+
