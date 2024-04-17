@@ -1,0 +1,24 @@
+description=Simple overwrite test in the middle of a large file, with a 4k buffer
+
+pre-begin
+init-buffer a # init buffer with 'a'
+prepare-file 10004.txt 100m # create a 100MB file
+pre-end
+
+run-begin
+clear-cache
+sleep 2
+init-buffer b # init buffer with 'b'
+open 10004.txt
+lseek 30721   # lseek to 30k + 1
+repeat-50 write 4k # write 4k 50 times
+fsync
+close
+clear-cache
+sleep 2
+eval file-md5 10004.txt
+run-end
+
+eval-begin
+05b53c5412bb6e1975ec7c058722e463 # the md5sum of the file
+eval-end

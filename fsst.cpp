@@ -14,7 +14,7 @@
 
 #define MD5_BLOCK_SIZE 16
 
-#define log_level 1
+#define log_level 0
 #define fsst_debug_log(fmt, ...) \
     do { \
         if(1 <= log_level) { \
@@ -1077,12 +1077,19 @@ private:
                 std::vector<std::string> args;
                 std::stringstream ss(line);
                 std::string token;
+                int repeat_times = 1;
                 while(ss >> token) {
                     if(token.at(0) == '#')
                         break;
+                    if(token.find("repeat") != std::string::npos) { // repeat-100
+                        repeat_times = std::stoi(token.substr(7));
+                        continue;
+                    }
                     args.push_back(token);
                 }
-                expected_output_list.push_back(args[0]);
+                for(int i = 0; i < repeat_times; i++) {
+                    expected_output_list.push_back(args[0]);
+                }
             }
 
         }
@@ -1157,7 +1164,7 @@ private:
     bool evaluate_outputs() {
         bool is_success = true;
         if(command_output_list.size() != expected_output_list.size()) {
-            std::cerr << "output size not match" << std::endl;
+            std::cerr << "output size not match, expected = " << expected_output_list.size() << ", output = " << command_output_list.size() << std::endl;
             return false;
         }
         for(int i = 0; i < command_output_list.size(); i++) {
@@ -1165,7 +1172,6 @@ private:
                 std::cerr << "[" << i << "] " << get_cmd_name_by_type(command_output_list[i]->type) 
                     << ": output not match, expected = " << expected_output_list[i] << ", output = " << command_output_list[i]->eval_value() << std::endl;
                 is_success = false;
-                break;
             }
         }
         return is_success;
