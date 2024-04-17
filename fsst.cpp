@@ -14,7 +14,7 @@
 
 #define MD5_BLOCK_SIZE 16
 
-#define log_level 0
+#define log_level 1
 #define fsst_debug_log(fmt, ...) \
     do { \
         if(1 <= log_level) { \
@@ -819,7 +819,7 @@ public:
     bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
-        char chdata = args[0].at(0);
+        chdata = args[0].at(0);
         return true; 
     }
     bool run(long arg, long arg2) override {

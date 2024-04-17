@@ -1,15 +1,19 @@
-description=This is for test.
+description=Simple write test: sequential write and check md5 for consistency
 
 pre-begin
+init-buffer a # init buffer with 'a'
 create 10001.txt
-repeat-100 write 4k # adasdasdad
-fsync               #asdasdas
+repeat-100 write 4k # write 100 times of 4k
+fsync               # fsync to make sure the data is on disk
 close
 pre-end
 
 run-begin
-open 10001.txt
-close
+eval file-md5 10001.txt
 run-end
+
+eval-begin
+af850b3b395d86b100169a34484e48c3 # md5 of 10001.txt
+eval-end
 
 
