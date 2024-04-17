@@ -840,7 +840,7 @@ class FSST_InitRandomAccess : public FSST_Command {
 public:
     FSST_InitRandomAccess(std::string runDir, Shared_Buffers *sb,std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_INIT_RANDOM_ACCESS, args, is_eval) {}
     bool parse(long arg) override {
-        if(args.size() != 2) 
+        if(args.size() != 1) 
             return false;
         seed = std::stoul(args[0]);
         max_access_range = 0;
