@@ -1,13 +1,16 @@
-description=This is for test.
+description=Simple write test and check consistency, but not align to 4k boundary
 
 pre-begin
+init-buffer a # init buffer with 'a'
 prepare-file 10002.txt 1001k
 pre-end
 
 run-begin
+clear-cache
+sleep 2
 eval file-md5 10002.txt
 run-end
 
 eval-begin
-bb2f520e788f2cc21105915a30c292d4 # bb2f520e788f2cc21105915a30c292d4
+bc058db00945a8500bc69895e7094b17 # md5sum of 10002.txt
 eval-end

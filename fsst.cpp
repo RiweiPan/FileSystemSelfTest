@@ -668,7 +668,7 @@ public:
 
 class FSST_FdatasyncCmd : public FSST_Command {
 public:
-    FSST_FdatasyncCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_FSYNC, args, is_eval) {}
+    FSST_FdatasyncCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_FDATASYNC, args, is_eval) {}
     bool parse(long arg) override {
         return true; 
     }
@@ -684,6 +684,31 @@ public:
     std::string eval_value() override { 
         return std::to_string(ret_val);
     }
+};
+
+class FSST_SeekCmd : public FSST_Command {
+public:
+    FSST_SeekCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_SEEK, args, is_eval) {}
+    bool parse(long arg) override {
+        if(args.size() != 1) 
+            return false;
+        __offset = std::stol(args[0]);
+        return true; 
+    }
+    bool run(long __fd, long arg2) override {
+        fsst_debug_log("FSST_SeekCmd: seek fd = %ld, offset = %d\n", __fd, __offset);
+        off_t ret = lseek(__fd, __offset, SEEK_SET);
+        if(ret < 0) 
+            return false;
+        ret_val = ret;
+        return true; 
+    }
+    long return_value() override { return ret_val; }
+    std::string eval_value() override { 
+        return std::to_string(ret_val);
+    }
+private:
+    unsigned long __offset;
 };
 
 class FSST_SleepCmd : public FSST_Command {
@@ -745,7 +770,7 @@ public:
             }
             remain -= ret;
         }
-
+        fsync(fd);
         close(fd);
         return true; 
     }
@@ -925,6 +950,8 @@ private:
             cmd = new FSST_PreadCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "pwrite") {
             cmd = new FSST_PwriteCmd(this->running_dir, this->sb, args, false);
+        } else if(ops_cmd == "lseek") {
+            cmd = new FSST_SeekCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "write") {
             cmd = new FSST_WriteCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "fsync") {

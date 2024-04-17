@@ -9,11 +9,13 @@ close
 pre-end
 
 run-begin
+clear-cache
+sleep 2
 eval file-md5 10001.txt
 run-end
 
 eval-begin
-af850b3b395d86b100169a34484e48c3 # md5 of 10001.txt
+af850b3b395d86b100169a34484e48c3 # md5sum of 10001.txt
 eval-end
 
 
