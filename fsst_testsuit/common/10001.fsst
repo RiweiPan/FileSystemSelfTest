@@ -8,7 +8,7 @@ close
 pre-end
 
 run-begin
-open abc.txt
+open 10001.txt
 close
 run-end
 

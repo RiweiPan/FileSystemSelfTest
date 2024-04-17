@@ -278,6 +278,11 @@ public:
         // fsst_debug_log("Shared_Buffers: get_shared_buffer, size = %lu, is_read = %d\n", bufsize_inbyte, is_read);
         return std::make_pair(bufsize_inbyte, get_buffer(bufsize_inbyte, is_read));
     }
+
+    void init_shared_buffer(unsigned char chdata) {
+        memset(shared_read_buffer, chdata, FSST_BUFSIZE_MAX);
+        memset(shared_write_buffer, chdata, FSST_BUFSIZE_MAX);
+    }
 private:
     unsigned char *shared_read_buffer;
     unsigned char *shared_write_buffer;
@@ -326,6 +331,8 @@ enum FSST_Command_Type {
     FSST_CMD_FILE_MD5,
     FSST_CMD_SLEEP,
     FSST_CMD_CLEARCACHE,
+    FSST_CMD_INIT_SHARED_BUFFER,
+    FSST_CMD_INIT_RANDOM_ACCESS,
     FSST_CMD_UNKNOWN = -1,
 };
 
@@ -365,6 +372,10 @@ std::string get_cmd_name_by_type(enum FSST_Command_Type type) {
             return "sleep";
         case FSST_CMD_CLEARCACHE:
             return "clearcache";
+        case FSST_CMD_INIT_SHARED_BUFFER:
+            return "init_shared_buffer";
+        case FSST_CMD_INIT_RANDOM_ACCESS:
+            return "init_random_access";
         default:
             return "unknown";
     }
@@ -383,8 +394,8 @@ public:
     }
     enum FSST_Command_Type type;
     bool do_eval;
-    virtual bool parse() = 0;
-    virtual bool run(long arg) = 0;
+    virtual bool parse(long arg) = 0;
+    virtual bool run(long arg, long arg2) = 0;
     virtual long return_value() = 0;
     virtual std::string eval_value() = 0;
 protected:
@@ -398,13 +409,13 @@ public:
     FSST_CreateCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_CREATE, args, is_eval) {
         this->runDir = runDir;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
         __filename = runDir + "/" + args[0];
         return true; 
     }
-    bool run(long arg) override {
+    bool run(long arg, long arg2) override {
         fsst_debug_log("FSST_CreateCmd: create file %s\n", __filename.c_str());
         int fd = open(__filename.c_str(), O_RDWR | O_CREAT, 0666);
         if(fd < 0) {
@@ -428,13 +439,13 @@ public:
     FSST_OpenCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_OPEN, args, is_eval) {
         this->runDir = runDir;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
         __filename = runDir + "/" + args[0];
         return true; 
     }
-    bool run(long arg) override {
+    bool run(long arg, long arg2) override {
         fsst_debug_log("FSST_OpenCmd: open file %s\n", __filename.c_str());
         int fd = open(__filename.c_str(), O_RDWR, 0666);
         if(fd < 0) 
@@ -454,10 +465,10 @@ private:
 class FSST_CloseCmd : public FSST_Command {
 public:
     FSST_CloseCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_CLOSE, args, is_eval) {}
-    bool parse() override {
+    bool parse(long arg) override {
         return true; 
     }
-    bool run(long __fd) override {
+    bool run(long __fd, long arg2) override {
         fsst_debug_log("FSST_CloseCmd: close fd = %ld\n", __fd);
         int ret = close(__fd);
         if(ret < 0) 
@@ -476,7 +487,7 @@ public:
     FSST_ReadCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_READ, args, is_eval) {
         this->sb = sb;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
         std::pair<unsigned long, unsigned char*> pair = sb->get_shared_buffer(args[0], 1);
@@ -488,7 +499,7 @@ public:
         return true; 
     }
 
-    bool run(long __fd) override {
+    bool run(long __fd, long arg2) override {
         fsst_debug_log("FSST_ReadCmd: read fd = %ld, size = %d\n", __fd, __size);
         ssize_t ret = read(__fd, __buf, __size);
         if(ret < 0) 
@@ -515,19 +526,25 @@ public:
     FSST_PreadCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_PREAD, args, is_eval) {
         this->sb = sb;
     }
-    bool parse() override {
+    bool parse(long max_file_size) override {
         if(args.size() != 2) 
             return false;
-         __offset = std::stoi(args[1]);
         std::pair<unsigned long, unsigned char*> pair = sb->get_shared_buffer(args[0], 1);
         __size = pair.first;
         __buf = pair.second;
         if(__buf == nullptr) {
             return false;
         }
+        if(args[1] == "X") {
+            __offset = 0;
+        } else {
+            __offset = std::stoi(args[1]);
+        }
         return true; 
     }
-    bool run(long __fd) override {
+    bool run(long __fd, long __max_access_range) override {
+        if(__max_access_range > 0)
+            __offset = rand() % (__max_access_range - __size - 1);
         fsst_debug_log("FSST_PreadCmd: pread fd = %ld, size = %d, offset = %d\n", __fd, __size, __offset);
         ssize_t ret = pread(__fd, __buf, __size, __offset);
         if(ret < 0) 
@@ -546,7 +563,7 @@ public:
 private:
     int __size;
     unsigned char *__buf;
-    int __offset;
+    unsigned long __offset;
     Shared_Buffers *sb;
 };
 
@@ -555,7 +572,7 @@ public:
     FSST_WriteCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_WRITE, args, is_eval) {
         this->sb = sb;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
         std::pair<unsigned long, unsigned char*> pair = sb->get_shared_buffer(args[0], 1);
@@ -566,7 +583,7 @@ public:
         }
         return true; 
     }
-    bool run(long __fd) override {
+    bool run(long __fd, long arg2) override {
         fsst_debug_log("FSST_WriteCmd: write fd = %ld, size = %d\n", __fd, __size);
         ssize_t ret = write(__fd, __buf, __size);
         if(ret < 0) {
@@ -592,19 +609,25 @@ public:
     FSST_PwriteCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_PWRITE, args, is_eval) {
         this->sb = sb;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 2) 
             return false;
-        __offset = std::stoi(args[1]);
         std::pair<unsigned long, unsigned char*> pair = sb->get_shared_buffer(args[0], 0);
         __size = pair.first;
         __buf = pair.second;
         if(__buf == nullptr) {
             return false;
         }
+        if(args[1] == "X") {
+            __offset = 0;
+        } else {
+            __offset = std::stoi(args[1]);
+        }
         return true; 
     }
-    bool run(long __fd) override {
+    bool run(long __fd, long __max_access_range) override {
+        if(__max_access_range > 0)
+            __offset = rand() % (__max_access_range - __size - 1);
         fsst_debug_log("FSST_PwriteCmd: pwrite fd = %ld, size = %d, offset = %d\n", __fd, __size, __offset);
         ssize_t ret = pwrite(__fd, __buf, __size, __offset);
         if(ret < 0) 
@@ -619,17 +642,17 @@ public:
 private:
     int __size;
     unsigned char *__buf;
-    int __offset;
+    unsigned long __offset;
     Shared_Buffers *sb;
 };
 
 class FSST_FsyncCmd : public FSST_Command {
 public:
     FSST_FsyncCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_FSYNC, args, is_eval) {}
-    bool parse() override {
+    bool parse(long arg) override {
         return true; 
     }
-    bool run(long __fd) override {
+    bool run(long __fd, long arg2) override {
         fsst_debug_log("FSST_FsyncCmd: fsync fd = %ld\n", __fd);
         int ret = fsync(__fd);
         if(ret < 0) 
@@ -646,10 +669,10 @@ public:
 class FSST_FdatasyncCmd : public FSST_Command {
 public:
     FSST_FdatasyncCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_FSYNC, args, is_eval) {}
-    bool parse() override {
+    bool parse(long arg) override {
         return true; 
     }
-    bool run(long __fd) override {
+    bool run(long __fd, long arg2) override {
         fsst_debug_log("FSST_FdatasyncCmd: fdatasync fd = %ld\n", __fd);
         int ret = fdatasync(__fd);
         if(ret < 0) 
@@ -666,13 +689,13 @@ public:
 class FSST_SleepCmd : public FSST_Command {
 public:
     FSST_SleepCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_SLEEP, args, is_eval) {}
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
         __time = std::stoi(args[0]);
         return true; 
     }
-    bool run(long arg) override {
+    bool run(long arg, long arg2) override {
         fsst_debug_log("FSST_SleepCmd: sleep %d\n", __time);
         sleep(__time);
         return true; 
@@ -691,14 +714,14 @@ public:
         this->rundir = runDir;
         this->sb = sb;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 2) 
             return false;
         __filename = rundir + "/" + args[0];
         __size = sb->parse_buffer_size(args[1]);
         return true; 
     }
-    bool run(long arg) override {
+    bool run(long arg, long arg2) override {
         fsst_debug_log("FSST_PrepareFileCmd: prepare file %s, size = %d\n", __filename.c_str(), __size);
         size_t ret;
         int fd = open(__filename.c_str(), O_RDWR | O_CREAT, 0644);
@@ -746,13 +769,13 @@ public:
     FSST_FileMd5Cmd(std::string runDir, Shared_Buffers *sb,std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_FILE_MD5, args, is_eval) {
         this->rundir = runDir;
     }
-    bool parse() override {
+    bool parse(long arg) override {
         if(args.size() != 1) 
             return false;
         __filename = rundir + "/" + args[0];
         return true; 
     }
-    bool run(long arg) override {
+    bool run(long arg, long arg2) override {
         fsst_debug_log("FSST_FileMd5Cmd: calculate md5 for file %s\n", __filename.c_str());
         MD5 md5;
         unsigned char hash[MD5_BLOCK_SIZE];
@@ -774,10 +797,10 @@ private:
 class FSST_ClearCacheCmd : public FSST_Command {
 public:
     FSST_ClearCacheCmd(std::string runDir, Shared_Buffers *sb,std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_CLEARCACHE, args, is_eval) {}
-    bool parse() override {
+    bool parse(long arg) override {
         return true; 
     }
-    bool run(long arg) override {
+    bool run(long arg, long arg2) override {
         fsst_debug_log("FSST_ClearCacheCmd: clear cache\n");
         system("sync; echo 3 > /proc/sys/vm/drop_caches"); // sync; echo 3 > /proc/sys/vm/drop_caches
         return true; 
@@ -788,6 +811,58 @@ public:
     }
 };
 
+class FSST_InitSharedBufferCmd : public FSST_Command {
+public:
+    FSST_InitSharedBufferCmd(std::string runDir, Shared_Buffers *sb,std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_INIT_SHARED_BUFFER, args, is_eval) {
+        this->sb = sb;
+    }
+    bool parse(long arg) override {
+        if(args.size() != 1) 
+            return false;
+        char chdata = args[0].at(0);
+        return true; 
+    }
+    bool run(long arg, long arg2) override {
+        fsst_debug_log("FSST_InitSharedBufferCmd: init shared buffer, char = %c\n", chdata);
+        sb->init_shared_buffer(chdata);
+        return true;
+    }
+    long return_value() override { return 0; }
+    std::string eval_value() override { 
+        return std::to_string(0);
+    }
+private:
+    Shared_Buffers *sb;
+    char chdata;
+};
+
+class FSST_InitRandomAccess : public FSST_Command {
+public:
+    FSST_InitRandomAccess(std::string runDir, Shared_Buffers *sb,std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_INIT_RANDOM_ACCESS, args, is_eval) {}
+    bool parse(long arg) override {
+        if(args.size() != 2) 
+            return false;
+        seed = std::stoul(args[0]);
+        max_access_range = 0;
+        return true; 
+    }
+    bool run(long __fd, long arg2) override {
+        fsst_debug_log("FSST_INIT_RANDOM_SEED: init random seed\n");
+        struct stat st;
+        srand(seed);
+        if(fstat(__fd, &st) == 0) {
+            max_access_range = st.st_size;
+        }
+        return true;
+    }
+    long return_value() override { return max_access_range; }
+    std::string eval_value() override { 
+        return std::to_string(0);
+    }
+private:
+    unsigned long seed;
+    unsigned long max_access_range;
+};
 
 class FSST_Task {
 public:
@@ -810,13 +885,22 @@ public:
     }
 
     bool run_testcase() {
+        bool ret = false;
         parse();
         std::cout << "====================================================================" << std::endl;
         std::cout << "[Test Case]:   " << testcase_name << std::endl;
         std::cout << "[Description]: " << description << std::endl;
-        run_commands(pre_command_list);
-        run_commands(run_command_list);
-        bool ret = evaluate_outputs();
+        ret = run_commands(pre_command_list);
+        if(!ret) {
+            std::cout << "[Result]:      " << "FAIL" << std::endl;
+            return false;
+        }
+        ret = run_commands(run_command_list);
+        if(!ret) {
+            std::cout << "[Result]:      " << "FAIL" << std::endl;
+            return false;
+        }
+        ret = evaluate_outputs();
         if(ret) {
             std::cout << "[Result]:      " << "PASS" << std::endl;
         } else {
@@ -826,6 +910,7 @@ public:
     }
 
 private:
+    bool is_rand_access = false;
     FSST_Command *parse_cmd(std::string &ops_cmd, std::vector<std::string> &args) {
         FSST_Command *cmd = nullptr;
         if(ops_cmd == "create") {
@@ -854,6 +939,13 @@ private:
             cmd = new FSST_PrepareFileCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "file-md5") {
             cmd = new FSST_FileMd5Cmd(this->running_dir, this->sb, args, false);
+        } else if(ops_cmd == "init-buffer") {
+            cmd = new FSST_InitSharedBufferCmd(this->running_dir, this->sb, args, false);
+        } else if(ops_cmd == "init-rand-access") {
+            cmd = new FSST_InitRandomAccess(this->running_dir, this->sb, args, false);
+            is_rand_access = true;
+        } else {
+            std::cerr << "Unknown command: " << ops_cmd << std::endl;
         }
         return cmd;
     }
@@ -943,7 +1035,7 @@ private:
                 for(int i = 0; i < repeat_times; i++) {
                     FSST_Command *cmd = parse_cmd(ops_cmd, args);
                     if(cmd != nullptr) {
-                        cmd->parse();
+                        cmd->parse(0);
                         if(state == 1) {
                             pre_command_list.push_back(cmd);
                         } else {
@@ -970,48 +1062,69 @@ private:
         return true;
     }
 
-    void run_commands(std::vector<FSST_Command *> &command_list) {
+    bool run_commands(std::vector<FSST_Command *> &command_list) {
         int fd = -1;
+        unsigned long max_access_range = 0;
         for(int i = 0; i < command_list.size(); i++) {
             FSST_Command *cmd = command_list[i];
             if(cmd->type == FSST_CMD_CREATE) {
                 fsst_debug_log("FSST_Task: create file\n");
-                if(!cmd->run(0)) {
+                if(!cmd->run(0, 0)) {
                     std::cerr << "create failed" << std::endl;
-                    return;
+                    return false;
                 }
                 fd = cmd->return_value();
             } else if(cmd->type == FSST_CMD_OPEN) {
-                if(!cmd->run(fd)) {
+                if(!cmd->run(fd, 0)) {
                     std::cerr << "open failed" << std::endl;
-                    return;
+                    return false;
                 }
                 fd = cmd->return_value();
             } else if(cmd->type == FSST_CMD_CLOSE) {
-                if(!cmd->run(fd)) {
+                if(!cmd->run(fd, 0)) {
                     std::cerr << "close failed" << std::endl;
-                    return;
+                    return false;
                 }
                 fd = -1;
-            } else if(cmd->type == FSST_CMD_READ || cmd->type == FSST_CMD_WRITE || cmd->type == FSST_CMD_FSYNC) {
+            } else if(cmd->type == FSST_CMD_INIT_RANDOM_ACCESS) {
                 if(fd < 0) {
                     std::cerr << "file not opened" << std::endl;
-                    return;
+                    return false;
                 }
-                if(!cmd->run(fd)) {
-                    std::cerr << "command failed, type = " << cmd->type << std::endl;
-                    return;
+                if(!cmd->run(fd, 0)) {
+                    std::cerr << "init random access failed" << std::endl;
+                    return false;
                 }
+                max_access_range = cmd->return_value();
+            } else if(cmd->type == FSST_CMD_READ || cmd->type == FSST_CMD_WRITE || cmd->type == FSST_CMD_FSYNC || cmd->type == FSST_CMD_FDATASYNC || 
+                cmd->type == FSST_CMD_PREAD || cmd->type == FSST_CMD_PWRITE || cmd->type == FSST_CMD_SEEK || cmd->type == FSST_CMD_IOCTL) {
+                if(fd < 0) {
+                    std::cerr << "file not opened" << std::endl;
+                    return false;
+                }
+                if(is_rand_access && (cmd->type == FSST_CMD_PREAD || cmd->type == FSST_CMD_PWRITE)) {
+                    if(!cmd->run(fd, max_access_range)) {
+                        std::cerr << "randome access command failed, type = " << cmd->type << std::endl;
+                        return false;
+                    }
+                } else {
+                    if(!cmd->run(fd, 0)) {
+                        std::cerr << "command failed, type = " << cmd->type << std::endl;
+                        return false;
+                    }
+                }
+
             } else {
-                if(!cmd->run(0)) {
+                if(!cmd->run(0, 0)) {
                     std::cerr << "command failed, type = " << cmd->type << std::endl;
-                    return;
+                    return false;
                 }            
             }
             if(cmd->do_eval) {
                 command_output_list.push_back(cmd);
             }
         }
+        return true;
     }
 
     bool evaluate_outputs() {
@@ -1128,8 +1241,7 @@ private:
 class FSST_Config {
 public:
     FSST_Config() {
-        testDir = "fsst_testcases";
-        runningDir = "fsst_running";
+        testDir = "fsst_testsuit";
     }
     FSST_Config(std::string testDir, std::string runningDir) {
         this->testDir = testDir;
@@ -1164,6 +1276,10 @@ FSST_Config parse_fsst_args(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
     FSST_Config fc = parse_fsst_args(argc, argv);
     FSST fsst(fc.testDir, fc.runningDir);
+    if(fc.runningDir.size() == 0) {
+        std::cerr << "running dir not set." << std::endl;
+        return -1;
+    }
     if(fc.testcase_id.size() > 0) {
         fsst.run_test_case(fc.testcase_id);
     } else {
