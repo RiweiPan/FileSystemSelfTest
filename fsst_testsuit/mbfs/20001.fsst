@@ -1,12 +1,16 @@
-description=This is for test.
+description=This is a test for converting a file to a multiple inode structure
 
 pre-begin
-open abc.txt
+prepare-file 20001-a.txt 10m
+create 20001-b.txt
 close
 pre-end
 
 run-begin
-open abc.txt
-close
+eval rename 20001-b.txt 20001-a.txt 8
 run-end
+
+eval-begin
+0  # check result of the rename operation
+eval-end
 

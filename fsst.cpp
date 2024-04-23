@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <stddef.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/ioctl.h>
 #include <dirent.h>
 
 #define MD5_BLOCK_SIZE 16
@@ -711,6 +713,42 @@ private:
     unsigned long __offset;
 };
 
+class FSST_RenameCmd : public FSST_Command {
+public:
+    FSST_RenameCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_RENAME, args, is_eval) {
+        this->runDir = runDir;
+    }
+    bool parse(long arg) override {
+        if(args.size() == 2 || args.size() == 3) {
+            __oldname = runDir + "/" + args[0];
+            __newname = runDir + "/" + args[1];
+            rflag = 0;
+            if(args.size() == 3)
+                rflag = std::stoi(args[2]);
+            return true; 
+        } else {
+            return false;
+        }
+    }
+    bool run(long arg, long arg2) override {
+        fsst_debug_log("FSST_RenameCmd: rename %s to %s, flag = %d\n", __oldname.c_str(), __newname.c_str(), rflag);
+        int ret = syscall(SYS_renameat2, AT_FDCWD, __oldname.c_str(), AT_FDCWD, __newname.c_str(), rflag);
+        if(ret < 0) 
+            return false;
+        ret_val = ret;
+        return true;
+    }
+    long return_value() override { return ret_val; }
+    std::string eval_value() override { 
+        return std::to_string(ret_val);
+    }
+private:
+    std::string runDir;
+    std::string __oldname;
+    std::string __newname;
+    int rflag;
+};
+
 class FSST_SleepCmd : public FSST_Command {
 public:
     FSST_SleepCmd(std::string runDir, Shared_Buffers *sb, std::vector<std::string> args, bool is_eval) : FSST_Command(FSST_CMD_SLEEP, args, is_eval) {}
@@ -958,6 +996,8 @@ private:
             cmd = new FSST_FsyncCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "fdatasync") {
             cmd = new FSST_FdatasyncCmd(this->running_dir, this->sb, args, false);
+        } else if(ops_cmd == "rename") {
+            cmd = new FSST_RenameCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "clear-cache") {
             cmd = new FSST_ClearCacheCmd(this->running_dir, this->sb, args, false);
         } else if(ops_cmd == "sleep") {
