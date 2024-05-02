@@ -1,16 +1,17 @@
-description=This is a test for converting a file to a multiple inode structure
+description=This is a test of linking two inodes
 
 pre-begin
-prepare-file 20001-a.txt 10m
-create 20001-b.txt
-close
+init-buffer a # init buffer with 'a'
+prepare-file 20001.txt 1001k
+prepare-file 20001-temp.txt 0
 pre-end
 
 run-begin
-eval rename 20001-b.txt 20001-a.txt 8
+rename 20001-temp.txt 20001.txt 8
+eval file-md5 20001.txt
 run-end
 
 eval-begin
-0  # check result of the rename operation
+bc058db00945a8500bc69895e7094b17 # md5sum of renamed 20001.txt
 eval-end
 

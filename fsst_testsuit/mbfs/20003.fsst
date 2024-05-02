@@ -1,0 +1,26 @@
+description=Simple random write test of a file with inode chain, with a 4k buffer
+
+pre-begin
+init-buffer a # init buffer with 'a'
+prepare-file 20003.txt 1m
+prepare-file 20003-temp.txt 0
+rename 20003-temp.txt 20003.txt 8
+clear-cache
+sleep 2
+pre-end
+
+run-begin
+init-buffer b # init buffer with 'b'
+open 20003.txt
+init-rand-access 1234  # init a fixed random seed for random access to reproduce
+repeat-50 pwrite 4k X # random write 50 times, X means random position
+fsync
+close
+clear-cache
+sleep 2
+eval file-md5 20003.txt
+run-end
+
+eval-begin
+b9fe7ebc70f5b5a92c590a68b7190033 # the md5sum of the 4k buffer random write
+eval-end

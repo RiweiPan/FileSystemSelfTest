@@ -1,0 +1,22 @@
+description=This is a test of linking four inodes
+
+pre-begin
+init-buffer a # init buffer with 'a'
+prepare-file 20002.txt 1001k
+prepare-file 20002-temp.txt 0
+prepare-file 20002-temp2.txt 0
+prepare-file 20002-temp3.txt 0
+pre-end
+
+run-begin
+rename 20002-temp.txt 20002.txt 8
+rename 20002-temp2.txt 20002.txt 8
+rename 20002-temp3.txt 20002.txt 8
+#eval file-md5 20002.txt
+run-end
+
+
+#eval-begin
+#bc058db00945a8500bc69895e7094b17 # md5sum of renamed 20002.txt
+#eval-end
+

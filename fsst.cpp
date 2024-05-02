@@ -34,19 +34,23 @@ public:
     }
 
     void calculate_file(const char *filename, unsigned char *fp) {
+        int fd;
         MD5_CTX ctx;
         md5_init(&ctx);
-        FILE *file = fopen(filename, "rb");
-        if(file == NULL) {
+        unsigned char buffer[1024];
+
+        fd = open(filename, O_RDONLY);
+        if(fd < 0) {
             return;
         }
-        unsigned char buffer[1024];
-        size_t len;
-        while((len = fread(buffer, 1, 1024, file)) > 0) {
+
+        ssize_t len;
+        while((len = read(fd, buffer, 1024)) > 0) {
             md5_update(&ctx, buffer, len);
         }
+
         md5_final(&ctx, fp);
-        fclose(file);
+        close(fd);
     }
 
 
@@ -547,7 +551,7 @@ public:
     bool run(long __fd, long __max_access_range) override {
         if(__max_access_range > 0)
             __offset = rand() % (__max_access_range - __size - 1);
-        fsst_debug_log("FSST_PreadCmd: pread fd = %ld, size = %d, offset = %d\n", __fd, __size, __offset);
+        fsst_debug_log("FSST_PreadCmd: pread fd = %ld, size = %d, page offset = %d\n", __fd, __size, (__offset + 4096 - 1) / 4096);
         ssize_t ret = pread(__fd, __buf, __size, __offset);
         if(ret < 0) 
             return false;
@@ -630,7 +634,7 @@ public:
     bool run(long __fd, long __max_access_range) override {
         if(__max_access_range > 0)
             __offset = rand() % (__max_access_range - __size - 1);
-        fsst_debug_log("FSST_PwriteCmd: pwrite fd = %ld, size = %d, offset = %d\n", __fd, __size, __offset);
+        fsst_debug_log("FSST_PwriteCmd: pwrite fd = %ld, size = %d, page offset = %d\n", __fd, __size, (__offset + 4096 - 1) / 4096);
         ssize_t ret = pwrite(__fd, __buf, __size, __offset);
         if(ret < 0) 
             return false;
@@ -790,6 +794,11 @@ public:
         int fd = open(__filename.c_str(), O_RDWR | O_CREAT, 0644);
         if(fd < 0) 
             return false;
+        if(__size == 0) {
+            close(fd);
+            return true; 
+        }
+
         const unsigned long bufsize = 512 * 1024;
         unsigned long bufcnt = (__size + bufsize - 1) / bufsize;
         unsigned long remain = __size;
@@ -1178,19 +1187,19 @@ private:
                 }
                 if(is_rand_access && (cmd->type == FSST_CMD_PREAD || cmd->type == FSST_CMD_PWRITE)) {
                     if(!cmd->run(fd, max_access_range)) {
-                        std::cerr << "randome access command failed, type = " << cmd->type << std::endl;
+                        std::cerr << "randome access command failed, type = " << get_cmd_name_by_type(cmd->type) << std::endl;
                         return false;
                     }
                 } else {
                     if(!cmd->run(fd, 0)) {
-                        std::cerr << "command failed, type = " << cmd->type << std::endl;
+                        std::cerr << "command failed, type = " << get_cmd_name_by_type(cmd->type) << std::endl;
                         return false;
                     }
                 }
 
             } else {
                 if(!cmd->run(0, 0)) {
-                    std::cerr << "command failed, type = " << cmd->type << std::endl;
+                    std::cerr << "command failed, type = " << get_cmd_name_by_type(cmd->type) << std::endl;
                     return false;
                 }            
             }
